@@ -8,6 +8,10 @@ uv.lock
 .dbeaver
 .project
 
+# ignore the cv
+cv.pdf
+cv.json
+
 # Ignore the mlruns
 /mlruns/*
 mlflow.db
