@@ -1,0 +1,19 @@
+repos:
+  # Standard hooks used to keep the git repo clean
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-added-large-files
+        args: ["--maxkb=35000"] # Set max size to 35000 KB (35 MB)
+      - id: end-of-file-fixer
+  # Execute ruff on all changed files (make sure the version is the same as in pyproject)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.3
+    hooks:
+      # Run the formatter.
+      - id: ruff-format
+        types_or: [python, pyi, jupyter]
+      # Run the linter.
+      - id: ruff
+        types_or: [python, pyi, jupyter]
+        args: [--fix]
