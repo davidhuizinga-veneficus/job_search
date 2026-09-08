@@ -199,3 +199,5 @@ mlruns_local/442005205728983936/models/m-5f956e43f1834646a4eb717b15baf6d2/params
 mlruns_local/442005205728983936/models/m-5f956e43f1834646a4eb717b15baf6d2/tags/
 mlruns_local/442005205728983936/models/m-5f956e43f1834646a4eb717b15baf6d2/metrics/
 forecasting_model/data/daily_orders.csv
+search_terms.json
+cv_2.pdf
