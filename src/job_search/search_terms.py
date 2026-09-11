@@ -23,16 +23,12 @@ class SearchTerms(BaseModel):
 
 
 def devise_search_terms(
-    cv_path: str | Path,
+    cv: CV,
     output_path: str | Path,
     api_key: str | None = None,
 ) -> SearchTerms:
     """Read a CV JSON file and write AI-generated job-search terms."""
-    cv_file = Path(cv_path)
-    if not cv_file.is_file():
-        raise FileNotFoundError(f"CV JSON file not found: {cv_file}")
-
-    cv = CV.model_validate_json(cv_file.read_text(encoding="utf-8"))
+    
     google_api_key = api_key or os.environ.get("GOOGLE_API_KEY")
     if not google_api_key:
         raise ValueError(
