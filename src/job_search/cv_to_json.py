@@ -14,6 +14,8 @@ from pydantic_ai.models.google import GoogleModel
 from pydantic_ai.providers.google import GoogleProvider
 from pypdf import PdfReader
 
+from job_search.gemini_limiter import get_shared_gemini_limiter
+
 load_dotenv()  # Load environment variables from .env file
 
 
@@ -266,11 +268,16 @@ def convert_cv_to_json(
         ),
     )
 
-    # Run extraction
-    result = agent.run_sync(
+    limiter = get_shared_gemini_limiter()
+    prompt = (
         f"Source file name: {path.name}\n\n"
         f"CV text:\n{extracted_text}"
     )
+    prompt = limiter.ensure_prompt_within_budget(prompt)
+    limiter.acquire()
+
+    # Run extraction
+    result = agent.run_sync(prompt)
 
     cv = result.output
 

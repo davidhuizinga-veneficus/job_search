@@ -12,6 +12,7 @@ from pydantic_ai.models.google import GoogleModel
 from pydantic_ai.providers.google import GoogleProvider
 
 from job_search.cv_to_json import CV
+from job_search.gemini_limiter import get_shared_gemini_limiter
 
 load_dotenv()
 
@@ -49,10 +50,14 @@ def devise_search_terms(
             "seniority. Return only the structured result."
         ),
     )
-    result = agent.run_sync(
+    limiter = get_shared_gemini_limiter()
+    prompt = (
         "Create Indeed search terms from this structured CV:\n\n"
         f"{cv.model_dump_json(indent=2)}"
     )
+    prompt = limiter.ensure_prompt_within_budget(prompt)
+    limiter.acquire()
+    result = agent.run_sync(prompt)
     search_terms = result.output
     Path(output_path).write_text(
         search_terms.model_dump_json(indent=2),

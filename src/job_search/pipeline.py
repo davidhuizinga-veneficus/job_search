@@ -7,6 +7,7 @@ from pathlib import Path
 
 from job_search.cv_to_json import convert_cv_to_json
 from job_search.indeed_search import search_indeed
+from job_search.job_enrichment import enrich_jobs_file
 from job_search.search_terms import devise_search_terms
 
 
@@ -38,8 +39,25 @@ def main() -> None:
         help="Path where Indeed jobs should be written.",
     )
     parser.add_argument(
+        "--jobs-db-path",
+        type=Path,
+        default=Path("jobs.db"),
+        help="Path for the SQLite database containing raw and enriched jobs.",
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=10,
+        help="Number of jobs to process per enrichment batch.",
+    )
+    parser.add_argument(
         "--api-key",
         help="Google API key; defaults to GOOGLE_API_KEY.",
+    )
+    parser.add_argument(
+        "--skip-enrichment",
+        action="store_true",
+        help="Skip the PydanticAI enrichment stage and only scrape jobs.",
     )
     args = parser.parse_args()
 
@@ -54,6 +72,13 @@ def main() -> None:
         location=location,
         country_indeed=country,
     )
+    if not args.skip_enrichment:
+        enrich_jobs_file(
+            args.jobs_path,
+            db_path=args.jobs_db_path,
+            batch_size=args.batch_size,
+            api_key=args.api_key,
+        )
 
 
 if __name__ == "__main__":

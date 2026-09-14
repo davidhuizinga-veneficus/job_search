@@ -1,2 +1,3 @@
-def main() -> None:
-    print("Hello from job-search!")
+from job_search.pipeline import main
+
+__all__ = ["main"]

@@ -12,6 +12,12 @@ uv.lock
 cv.pdf
 cv.json
 
+# ignore intermediate files
+jobs.db
+jobs.db-shm
+jobs.db-wal
+jobs.json
+
 # Ignore the mlruns
 /mlruns/*
 mlflow.db
