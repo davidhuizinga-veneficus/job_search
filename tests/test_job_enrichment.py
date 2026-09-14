@@ -83,14 +83,61 @@ class TestJobEnrichment(unittest.TestCase):
                     "SELECT COUNT(*) FROM enriched_jobs"
                 ).fetchone()[0]
                 sample = conn.execute(
-                    "SELECT payload_json FROM raw_jobs WHERE job_key = 'indeed:123'"
+                    "SELECT id, title, min_amount, currency FROM raw_jobs WHERE job_key = 'indeed:123'"
                 ).fetchone()
 
             self.assertEqual(raw_rows, 1)
             self.assertEqual(enriched_rows, 1)
             self.assertIsNotNone(sample)
-            payload = json.loads(sample[0])
-            self.assertEqual(payload["id"], "in-123")
+            self.assertEqual(sample[0], "in-123")
+            self.assertEqual(sample[1], "Security Guard")
+        finally:
+            pass
+
+    def test_store_jobs_in_sqlite_migrates_legacy_tables_with_missing_columns(self):
+        raw_job = {
+            "id": "in-123",
+            "site": "indeed",
+            "job_url": "https://www.indeed.com/viewjob?jk=123",
+            "title": "Security Guard",
+            "company": "Acme Security",
+            "description": "Security guard work.",
+            "search_term": "Security Guard",
+        }
+        enriched_job = {
+            "id": "in-123",
+            "source": "indeed",
+            "url": raw_job["job_url"],
+            "title": raw_job["title"],
+            "company": raw_job["company"],
+            "description": raw_job["description"],
+            "search_term": raw_job["search_term"],
+        }
+
+        tmp_dir = tempfile.mkdtemp()
+        try:
+            db_path = Path(tmp_dir) / "jobs.db"
+            with sqlite3.connect(db_path) as conn:
+                conn.execute(
+                    "CREATE TABLE raw_jobs (job_key TEXT PRIMARY KEY, payload_json TEXT)"
+                )
+                conn.execute(
+                    "CREATE TABLE enriched_jobs (job_key TEXT PRIMARY KEY, payload_json TEXT)"
+                )
+                conn.commit()
+
+            store_jobs_in_sqlite(db_path, [raw_job], [enriched_job])
+
+            with sqlite3.connect(db_path) as conn:
+                raw_columns = {
+                    row[1] for row in conn.execute("PRAGMA table_info(raw_jobs)")
+                }
+                stored_id = conn.execute(
+                    "SELECT id FROM raw_jobs WHERE job_key = 'indeed:123'"
+                ).fetchone()[0]
+
+            self.assertIn("id", raw_columns)
+            self.assertEqual(stored_id, "in-123")
         finally:
             pass
 

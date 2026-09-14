@@ -260,83 +260,246 @@ def enrich_jobs_in_batches(
     return enriched_jobs
 
 
+def _sqlite_row_for_raw_job(job: dict[str, Any]) -> tuple[str, dict[str, Any], str]:
+    job_key = canonical_indeed_job_key(job)
+    row = {
+        "job_key": job_key,
+        "id": job.get("id"),
+        "site": job.get("site"),
+        "job_url": job.get("job_url"),
+        "job_url_direct": job.get("job_url_direct"),
+        "title": job.get("title"),
+        "company": job.get("company"),
+        "location": job.get("location"),
+        "date_posted": job.get("date_posted"),
+        "job_type": job.get("job_type"),
+        "salary_source": job.get("salary_source"),
+        "interval": job.get("interval"),
+        "min_amount": job.get("min_amount"),
+        "max_amount": job.get("max_amount"),
+        "currency": job.get("currency"),
+        "is_remote": job.get("is_remote"),
+        "job_level": job.get("job_level"),
+        "job_function": job.get("job_function"),
+        "listing_type": job.get("listing_type"),
+        "description": job.get("description"),
+        "company_industry": job.get("company_industry"),
+        "company_url": job.get("company_url"),
+        "company_logo": job.get("company_logo"),
+        "company_url_direct": job.get("company_url_direct"),
+        "company_addresses": job.get("company_addresses"),
+        "company_num_employees": job.get("company_num_employees"),
+        "company_revenue": job.get("company_revenue"),
+        "company_description": job.get("company_description"),
+        "skills": job.get("skills"),
+        "experience_range": job.get("experience_range"),
+        "company_rating": job.get("company_rating"),
+        "company_reviews_count": job.get("company_reviews_count"),
+        "vacancy_count": job.get("vacancy_count"),
+        "work_from_home_type": job.get("work_from_home_type"),
+        "search_term": job.get("search_term"),
+        "stored_at": datetime.now(timezone.utc).isoformat(),
+    }
+    return job_key, row, job_key
+
+
+def _sqlite_row_for_enriched_job(job: Job) -> tuple[str, dict[str, Any], str]:
+    job_key = canonical_indeed_job_key({
+        "site": job.source,
+        "job_url": job.url,
+        "id": job.id,
+    })
+    row = {
+        "job_key": job_key,
+        "id": job.id,
+        "source": job.source,
+        "url": job.url,
+        "title": job.title,
+        "company": job.company,
+        "location": job.location,
+        "date_posted": job.date_posted.isoformat() if job.date_posted else None,
+        "job_type": job.job_type,
+        "is_remote": job.is_remote,
+        "salary_min": job.salary_min,
+        "salary_max": job.salary_max,
+        "salary_currency": job.salary_currency,
+        "salary_interval": job.salary_interval,
+        "description": job.description,
+        "search_term": job.search_term,
+        "scraped_at": job.scraped_at.isoformat(),
+        "summary": job.summary,
+        "responsibilities": json.dumps(job.responsibilities, ensure_ascii=False),
+        "minimum_years_experience": job.minimum_years_experience,
+        "maximum_years_experience": job.maximum_years_experience,
+        "required_skills": json.dumps(job.required_skills, ensure_ascii=False),
+        "preferred_skills": json.dumps(job.preferred_skills, ensure_ascii=False),
+        "required_education": json.dumps(job.required_education, ensure_ascii=False),
+        "preferred_education": json.dumps(job.preferred_education, ensure_ascii=False),
+        "required_certifications": json.dumps(job.required_certifications, ensure_ascii=False),
+        "preferred_certifications": json.dumps(job.preferred_certifications, ensure_ascii=False),
+        "required_licenses": json.dumps(job.required_licenses, ensure_ascii=False),
+        "preferred_licenses": json.dumps(job.preferred_licenses, ensure_ascii=False),
+        "required_languages": json.dumps(job.required_languages, ensure_ascii=False),
+        "preferred_languages": json.dumps(job.preferred_languages, ensure_ascii=False),
+        "seniority": job.seniority,
+        "industry": job.industry,
+        "benefits": json.dumps(job.benefits, ensure_ascii=False),
+        "shifts": json.dumps(job.shifts, ensure_ascii=False),
+        "schedule": json.dumps(job.schedule, ensure_ascii=False),
+        "travel_required": job.travel_required,
+        "travel_percentage": job.travel_percentage,
+        "physical_requirements": json.dumps(job.physical_requirements, ensure_ascii=False),
+        "other_requirements": json.dumps(job.other_requirements, ensure_ascii=False),
+        "stored_at": datetime.now(timezone.utc).isoformat(),
+    }
+    return job_key, row, job_key
+
+
+def _ensure_sqlite_columns(
+    conn: sqlite3.Connection,
+    table_name: str,
+    field_definitions: Sequence[str],
+) -> None:
+    conn.execute(
+        f"CREATE TABLE IF NOT EXISTS {table_name} ("
+        + ", ".join(field_definitions)
+        + ")"
+    )
+    existing_columns = {
+        row[1] for row in conn.execute(f"PRAGMA table_info({table_name})")
+    }
+    for field_definition in field_definitions:
+        column_name = field_definition.split(" ", 1)[0]
+        if column_name not in existing_columns:
+            conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {field_definition}")
+
+
 def store_jobs_in_sqlite(
     db_path: str | Path,
     raw_jobs: Sequence[dict[str, Any]],
     enriched_jobs: Sequence[dict[str, Any] | Job],
 ) -> Path:
-    """Persist raw Indeed jobs and enriched Job records into SQLite."""
+    """Persist raw Indeed jobs and enriched Job records into SQLite using one column per field."""
     db = Path(db_path)
     db.parent.mkdir(parents=True, exist_ok=True)
 
     conn = sqlite3.connect(str(db))
     try:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS raw_jobs (
-                job_key TEXT PRIMARY KEY,
-                source TEXT NOT NULL,
-                payload_json TEXT NOT NULL,
-                stored_at TEXT NOT NULL
-            )
-            """
-        )
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS enriched_jobs (
-                job_key TEXT PRIMARY KEY,
-                source TEXT NOT NULL,
-                payload_json TEXT NOT NULL,
-                stored_at TEXT NOT NULL
-            )
-            """
-        )
+        raw_fields = [
+            "job_key TEXT PRIMARY KEY",
+            "id TEXT",
+            "site TEXT",
+            "job_url TEXT",
+            "job_url_direct TEXT",
+            "title TEXT",
+            "company TEXT",
+            "location TEXT",
+            "date_posted TEXT",
+            "job_type TEXT",
+            "salary_source TEXT",
+            "interval TEXT",
+            "min_amount REAL",
+            "max_amount REAL",
+            "currency TEXT",
+            "is_remote BOOLEAN",
+            "job_level TEXT",
+            "job_function TEXT",
+            "listing_type TEXT",
+            "description TEXT",
+            "company_industry TEXT",
+            "company_url TEXT",
+            "company_logo TEXT",
+            "company_url_direct TEXT",
+            "company_addresses TEXT",
+            "company_num_employees TEXT",
+            "company_revenue TEXT",
+            "company_description TEXT",
+            "skills TEXT",
+            "experience_range TEXT",
+            "company_rating REAL",
+            "company_reviews_count INTEGER",
+            "vacancy_count INTEGER",
+            "work_from_home_type TEXT",
+            "search_term TEXT",
+            "stored_at TEXT",
+        ]
+        _ensure_sqlite_columns(conn, "raw_jobs", raw_fields)
 
-        now = datetime.now(timezone.utc).isoformat()
+        enriched_fields = [
+            "job_key TEXT PRIMARY KEY",
+            "id TEXT",
+            "source TEXT",
+            "url TEXT",
+            "title TEXT",
+            "company TEXT",
+            "location TEXT",
+            "date_posted TEXT",
+            "job_type TEXT",
+            "is_remote BOOLEAN",
+            "salary_min REAL",
+            "salary_max REAL",
+            "salary_currency TEXT",
+            "salary_interval TEXT",
+            "description TEXT",
+            "search_term TEXT",
+            "scraped_at TEXT",
+            "summary TEXT",
+            "responsibilities TEXT",
+            "minimum_years_experience REAL",
+            "maximum_years_experience REAL",
+            "required_skills TEXT",
+            "preferred_skills TEXT",
+            "required_education TEXT",
+            "preferred_education TEXT",
+            "required_certifications TEXT",
+            "preferred_certifications TEXT",
+            "required_licenses TEXT",
+            "preferred_licenses TEXT",
+            "required_languages TEXT",
+            "preferred_languages TEXT",
+            "seniority TEXT",
+            "industry TEXT",
+            "benefits TEXT",
+            "shifts TEXT",
+            "schedule TEXT",
+            "travel_required BOOLEAN",
+            "travel_percentage REAL",
+            "physical_requirements TEXT",
+            "other_requirements TEXT",
+            "stored_at TEXT",
+        ]
+        _ensure_sqlite_columns(conn, "enriched_jobs", enriched_fields)
+
         for raw_job in raw_jobs:
-            source = str(raw_job.get("site") or raw_job.get("source") or "indeed")
-            job_key = canonical_indeed_job_key(raw_job)
-            payload = json.dumps(raw_job, ensure_ascii=False, sort_keys=True, default=str)
+            _, row, _ = _sqlite_row_for_raw_job(raw_job)
+            columns = ", ".join(row.keys())
+            placeholders = ", ".join("?" for _ in row)
+            values = tuple(row.values())
             conn.execute(
-                """
-                INSERT INTO raw_jobs (job_key, source, payload_json, stored_at)
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT(job_key) DO UPDATE SET
-                    source = excluded.source,
-                    payload_json = excluded.payload_json,
-                    stored_at = excluded.stored_at
-                """,
-                (job_key, source, payload, now),
+                f"INSERT INTO raw_jobs ({columns}) VALUES ({placeholders}) ON CONFLICT(job_key) DO UPDATE SET "
+                + ", ".join(f"{col} = excluded.{col}" for col in row.keys() if col != "job_key"),
+                values,
             )
 
         for enriched_job in enriched_jobs:
             if isinstance(enriched_job, Job):
-                payload = enriched_job.model_dump(mode="json")
-                source = enriched_job.source
-                job_key = canonical_indeed_job_key({
-                    "site": source,
-                    "job_url": enriched_job.url,
-                    "id": enriched_job.id,
-                })
+                _, row, _ = _sqlite_row_for_enriched_job(enriched_job)
             else:
                 payload = dict(enriched_job)
-                source = str(payload.get("source") or payload.get("site") or "indeed")
-                job_key = canonical_indeed_job_key({
-                    "site": source,
-                    "job_url": payload.get("url") or payload.get("job_url"),
-                    "id": payload.get("id"),
-                })
-            payload_json = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
+                payload.setdefault("scraped_at", datetime.now(timezone.utc).isoformat())
+                if "source" not in payload and "site" in payload:
+                    payload["source"] = payload["site"]
+                if "url" not in payload and "job_url" in payload:
+                    payload["url"] = payload["job_url"]
+                job = Job.model_validate(payload)
+                _, row, _ = _sqlite_row_for_enriched_job(job)
+            columns = ", ".join(row.keys())
+            placeholders = ", ".join("?" for _ in row)
+            values = tuple(row.values())
             conn.execute(
-                """
-                INSERT INTO enriched_jobs (job_key, source, payload_json, stored_at)
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT(job_key) DO UPDATE SET
-                    source = excluded.source,
-                    payload_json = excluded.payload_json,
-                    stored_at = excluded.stored_at
-                """,
-                (job_key, source, payload_json, now),
+                f"INSERT INTO enriched_jobs ({columns}) VALUES ({placeholders}) ON CONFLICT(job_key) DO UPDATE SET "
+                + ", ".join(f"{col} = excluded.{col}" for col in row.keys() if col != "job_key"),
+                values,
             )
 
         conn.commit()
