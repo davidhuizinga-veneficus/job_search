@@ -3,6 +3,7 @@ import shutil
 import sqlite3
 import tempfile
 import unittest
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -99,15 +100,21 @@ class TestPipelineRateLimiter(unittest.TestCase):
                     "--batch-size",
                     "10",
                 ]):
-                    main()
+                    with patch(
+                        "job_search.pipeline.uuid.uuid4",
+                        return_value=uuid.UUID("00000000-0000-0000-0000-000000000001"),
+                    ):
+                        main()
 
             with sqlite3.connect(db_path) as conn:
                 raw_count = conn.execute("SELECT COUNT(*) FROM raw_jobs").fetchone()[0]
                 enriched_count = conn.execute("SELECT COUNT(*) FROM enriched_jobs").fetchone()[0]
+                cv_ids = conn.execute("SELECT DISTINCT cv_id FROM raw_jobs").fetchall()
 
             self.assertGreaterEqual(acquire_mock.call_count, 3)
             self.assertEqual(raw_count, 1)
             self.assertEqual(enriched_count, 1)
+            self.assertEqual(cv_ids, [("00000000-0000-0000-0000-000000000001",)])
             self.assertIs(get_shared_gemini_limiter(), limiter)
         finally:
             try:

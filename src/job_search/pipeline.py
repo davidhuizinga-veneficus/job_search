@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import uuid
 from pathlib import Path
 
 from job_search.cv_to_json import convert_cv_to_json
@@ -78,6 +79,7 @@ def main() -> None:
             db_path=args.jobs_db_path,
             batch_size=args.batch_size,
             api_key=args.api_key,
+            cv_id=str(uuid.uuid4()),
         )
 
 

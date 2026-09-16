@@ -260,9 +260,12 @@ def enrich_jobs_in_batches(
     return enriched_jobs
 
 
-def _sqlite_row_for_raw_job(job: dict[str, Any]) -> tuple[str, dict[str, Any], str]:
+def _sqlite_row_for_raw_job(
+    job: dict[str, Any], cv_id: str = "default"
+) -> tuple[str, dict[str, Any], str]:
     job_key = canonical_indeed_job_key(job)
     row = {
+        "cv_id": cv_id,
         "job_key": job_key,
         "id": job.get("id"),
         "site": job.get("site"),
@@ -303,13 +306,16 @@ def _sqlite_row_for_raw_job(job: dict[str, Any]) -> tuple[str, dict[str, Any], s
     return job_key, row, job_key
 
 
-def _sqlite_row_for_enriched_job(job: Job) -> tuple[str, dict[str, Any], str]:
+def _sqlite_row_for_enriched_job(
+    job: Job, cv_id: str = "default"
+) -> tuple[str, dict[str, Any], str]:
     job_key = canonical_indeed_job_key({
         "site": job.source,
         "job_url": job.url,
         "id": job.id,
     })
     row = {
+        "cv_id": cv_id,
         "job_key": job_key,
         "id": job.id,
         "source": job.source,
@@ -360,11 +366,10 @@ def _ensure_sqlite_columns(
     table_name: str,
     field_definitions: Sequence[str],
 ) -> None:
-    conn.execute(
-        f"CREATE TABLE IF NOT EXISTS {table_name} ("
-        + ", ".join(field_definitions)
-        + ")"
-    )
+    column_names = [field.split(" ", 1)[0] for field in field_definitions]
+    table_definition = ", ".join(field_definitions)
+    table_definition += ", PRIMARY KEY (cv_id, job_key)"
+    conn.execute(f"CREATE TABLE IF NOT EXISTS {table_name} ({table_definition})")
     existing_columns = {
         row[1] for row in conn.execute(f"PRAGMA table_info({table_name})")
     }
@@ -373,11 +378,37 @@ def _ensure_sqlite_columns(
         if column_name not in existing_columns:
             conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {field_definition}")
 
+    primary_key_columns = [
+        row[1]
+        for row in sorted(
+            conn.execute(f"PRAGMA table_info({table_name})"), key=lambda item: item[5]
+        )
+        if row[5]
+    ]
+    if primary_key_columns == ["cv_id", "job_key"]:
+        return
+
+    legacy_table = f"{table_name}_legacy"
+    conn.execute(f"ALTER TABLE {table_name} RENAME TO {legacy_table}")
+    conn.execute(f"CREATE TABLE {table_name} ({table_definition})")
+    legacy_columns = {
+        row[1] for row in conn.execute(f"PRAGMA table_info({legacy_table})")
+    }
+    copied_columns = [column for column in column_names if column in legacy_columns]
+    if copied_columns:
+        columns = ", ".join(copied_columns)
+        conn.execute(
+            f"INSERT INTO {table_name} ({columns}) SELECT {columns} FROM {legacy_table}"
+        )
+    conn.execute(f"DROP TABLE {legacy_table}")
+
 
 def store_jobs_in_sqlite(
     db_path: str | Path,
     raw_jobs: Sequence[dict[str, Any]],
     enriched_jobs: Sequence[dict[str, Any] | Job],
+    *,
+    cv_id: str = "default",
 ) -> Path:
     """Persist raw Indeed jobs and enriched Job records into SQLite using one column per field."""
     db = Path(db_path)
@@ -386,7 +417,8 @@ def store_jobs_in_sqlite(
     conn = sqlite3.connect(str(db))
     try:
         raw_fields = [
-            "job_key TEXT PRIMARY KEY",
+            "cv_id TEXT",
+            "job_key TEXT",
             "id TEXT",
             "site TEXT",
             "job_url TEXT",
@@ -426,7 +458,8 @@ def store_jobs_in_sqlite(
         _ensure_sqlite_columns(conn, "raw_jobs", raw_fields)
 
         enriched_fields = [
-            "job_key TEXT PRIMARY KEY",
+            "cv_id TEXT",
+            "job_key TEXT",
             "id TEXT",
             "source TEXT",
             "url TEXT",
@@ -471,19 +504,19 @@ def store_jobs_in_sqlite(
         _ensure_sqlite_columns(conn, "enriched_jobs", enriched_fields)
 
         for raw_job in raw_jobs:
-            _, row, _ = _sqlite_row_for_raw_job(raw_job)
+            _, row, _ = _sqlite_row_for_raw_job(raw_job, cv_id)
             columns = ", ".join(row.keys())
             placeholders = ", ".join("?" for _ in row)
             values = tuple(row.values())
             conn.execute(
-                f"INSERT INTO raw_jobs ({columns}) VALUES ({placeholders}) ON CONFLICT(job_key) DO UPDATE SET "
-                + ", ".join(f"{col} = excluded.{col}" for col in row.keys() if col != "job_key"),
+                f"INSERT INTO raw_jobs ({columns}) VALUES ({placeholders}) ON CONFLICT(cv_id, job_key) DO UPDATE SET "
+                + ", ".join(f"{col} = excluded.{col}" for col in row if col not in {"cv_id", "job_key"}),
                 values,
             )
 
         for enriched_job in enriched_jobs:
             if isinstance(enriched_job, Job):
-                _, row, _ = _sqlite_row_for_enriched_job(enriched_job)
+                _, row, _ = _sqlite_row_for_enriched_job(enriched_job, cv_id)
             else:
                 payload = dict(enriched_job)
                 payload.setdefault("scraped_at", datetime.now(timezone.utc).isoformat())
@@ -492,13 +525,13 @@ def store_jobs_in_sqlite(
                 if "url" not in payload and "job_url" in payload:
                     payload["url"] = payload["job_url"]
                 job = Job.model_validate(payload)
-                _, row, _ = _sqlite_row_for_enriched_job(job)
+                _, row, _ = _sqlite_row_for_enriched_job(job, cv_id)
             columns = ", ".join(row.keys())
             placeholders = ", ".join("?" for _ in row)
             values = tuple(row.values())
             conn.execute(
-                f"INSERT INTO enriched_jobs ({columns}) VALUES ({placeholders}) ON CONFLICT(job_key) DO UPDATE SET "
-                + ", ".join(f"{col} = excluded.{col}" for col in row.keys() if col != "job_key"),
+                f"INSERT INTO enriched_jobs ({columns}) VALUES ({placeholders}) ON CONFLICT(cv_id, job_key) DO UPDATE SET "
+                + ", ".join(f"{col} = excluded.{col}" for col in row if col not in {"cv_id", "job_key"}),
                 values,
             )
 
@@ -524,10 +557,11 @@ def enrich_jobs_file(
     db_path: str | Path,
     batch_size: int = BATCH_SIZE,
     api_key: str | None = None,
+    cv_id: str = "default",
 ) -> list[Job]:
     raw_jobs = deduplicate_jobs(read_jobs_json(jobs_path))
     enriched_jobs = enrich_jobs_in_batches(raw_jobs, batch_size=batch_size, api_key=api_key)
-    store_jobs_in_sqlite(db_path, raw_jobs, enriched_jobs)
+    store_jobs_in_sqlite(db_path, raw_jobs, enriched_jobs, cv_id=cv_id)
     return enriched_jobs
 
 

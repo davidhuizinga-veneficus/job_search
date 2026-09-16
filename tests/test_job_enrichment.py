@@ -141,6 +141,41 @@ class TestJobEnrichment(unittest.TestCase):
         finally:
             pass
 
+    def test_store_jobs_in_sqlite_keeps_same_job_for_multiple_cvs(self):
+        raw_job = {
+            "id": "in-123",
+            "site": "indeed",
+            "job_url": "https://www.indeed.com/viewjob?jk=123",
+            "title": "Security Guard",
+            "company": "Acme Security",
+            "description": "Security guard work.",
+            "search_term": "Security Guard",
+        }
+        enriched_job = {
+            "id": "in-123",
+            "source": "indeed",
+            "url": raw_job["job_url"],
+            "title": raw_job["title"],
+            "company": raw_job["company"],
+            "description": raw_job["description"],
+            "search_term": raw_job["search_term"],
+        }
+
+        tmp_dir = tempfile.mkdtemp()
+        try:
+            db_path = Path(tmp_dir) / "jobs.db"
+            store_jobs_in_sqlite(db_path, [raw_job], [enriched_job], cv_id="cv-one")
+            store_jobs_in_sqlite(db_path, [raw_job], [enriched_job], cv_id="cv-two")
+
+            with sqlite3.connect(db_path) as conn:
+                rows = conn.execute(
+                    "SELECT cv_id, COUNT(*) FROM raw_jobs GROUP BY cv_id ORDER BY cv_id"
+                ).fetchall()
+
+            self.assertEqual(rows, [("cv-one", 1), ("cv-two", 1)])
+        finally:
+            pass
+
     def test_enricher_keeps_structured_salary_when_present(self):
         job = {
             "id": "in-123",
