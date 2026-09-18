@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import hashlib
 import os
 from pathlib import Path
 
@@ -141,6 +142,11 @@ def extract_pdf_text(pdf_path: str | Path) -> str:
         raise ValueError("No text could be extracted from the PDF.")
 
     return text
+
+
+def calculate_cv_id(pdf_path: str | Path) -> str:
+    """Return the stable identifier for a CV's PDF contents."""
+    return hashlib.sha256(Path(pdf_path).read_bytes()).hexdigest()
 
 
 def calculate_days(

@@ -18,6 +18,8 @@ def search_indeed(
     location: str = "",
     country_indeed: str = "Netherlands",
     results_wanted: int = 20,
+    scrape_radius_miles: int = 50,
+    scrape_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """Search Indeed for every term and write the combined results as JSON."""
     jobs: list[dict[str, Any]] = []
@@ -28,12 +30,15 @@ def search_indeed(
             search_term=search_term,
             location=location,
             country_indeed=country_indeed,
+            distance=scrape_radius_miles,
             results_wanted=results_wanted,
             description_format="markdown",
             verbose=1,
         )
         for job in json.loads(results.to_json(orient="records", date_format="iso")):
             job["search_term"] = search_term
+            if scrape_id is not None:
+                job["scrape_id"] = scrape_id
             jobs.append(job)
 
     Path(output_path).write_text(

@@ -81,6 +81,7 @@ class TestPipelineRateLimiter(unittest.TestCase):
             db_path = jobs_dir / "jobs.db"
 
             with patch("job_search.cv_to_json.extract_pdf_text", return_value="Security guard CV."), \
+                 patch("job_search.pipeline.calculate_cv_id", return_value="cv-test"), \
                  patch("job_search.cv_to_json.Agent.run_sync", new=fake_run_sync), \
                  patch("job_search.search_terms.Agent.run_sync", new=fake_run_sync), \
                  patch("job_search.job_enrichment.Agent.run_sync", new=fake_run_sync), \
@@ -114,7 +115,7 @@ class TestPipelineRateLimiter(unittest.TestCase):
             self.assertGreaterEqual(acquire_mock.call_count, 3)
             self.assertEqual(raw_count, 1)
             self.assertEqual(enriched_count, 1)
-            self.assertEqual(cv_ids, [("00000000-0000-0000-0000-000000000001",)])
+            self.assertEqual(cv_ids, [("cv-test",)])
             self.assertIs(get_shared_gemini_limiter(), limiter)
         finally:
             try:

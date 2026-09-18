@@ -6,7 +6,7 @@ import argparse
 import uuid
 from pathlib import Path
 
-from job_search.cv_to_json import convert_cv_to_json
+from job_search.cv_to_json import calculate_cv_id, convert_cv_to_json
 from job_search.indeed_search import search_indeed
 from job_search.job_enrichment import enrich_jobs_file
 from job_search.search_terms import devise_search_terms
@@ -52,6 +52,12 @@ def main() -> None:
         help="Number of jobs to process per enrichment batch.",
     )
     parser.add_argument(
+        "--scrape-radius-miles",
+        type=int,
+        default=50,
+        help="Distance used when retrieving jobs from Indeed.",
+    )
+    parser.add_argument(
         "--api-key",
         help="Google API key; defaults to GOOGLE_API_KEY.",
     )
@@ -62,6 +68,8 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    cv_id = calculate_cv_id(args.pdf_path)
+    scrape_id = str(uuid.uuid4())
     cv = convert_cv_to_json(args.pdf_path, args.cv_json_path, args.api_key)
     search_terms = devise_search_terms(cv, args.search_terms_path, args.api_key)
     location_parts = [cv.location.city, cv.location.region]
@@ -72,6 +80,8 @@ def main() -> None:
         args.jobs_path,
         location=location,
         country_indeed=country,
+        scrape_radius_miles=args.scrape_radius_miles,
+        scrape_id=scrape_id,
     )
     if not args.skip_enrichment:
         enrich_jobs_file(
@@ -79,8 +89,11 @@ def main() -> None:
             db_path=args.jobs_db_path,
             batch_size=args.batch_size,
             api_key=args.api_key,
-            cv_id=str(uuid.uuid4()),
+            cv_id=cv_id,
+            scrape_id=scrape_id,
         )
+    print(f"cv_id={cv_id}")
+    print(f"scrape_id={scrape_id}")
 
 
 if __name__ == "__main__":
