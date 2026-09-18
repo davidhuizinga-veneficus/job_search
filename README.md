@@ -31,3 +31,14 @@ SELECT * FROM job_rankings
 WHERE ranking_run_id = '<ranking_run_id>'
 ORDER BY score DESC;
 ```
+
+## Streamlit UI
+
+Start the current-scrape interface with:
+
+```text
+uv run streamlit run src/job_search/app.py
+```
+
+The UI accepts a PDF CV, runs the existing pipeline, and displays the newly
+ranked results only. It does not expose earlier database runs.

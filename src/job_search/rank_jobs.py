@@ -9,6 +9,7 @@ import sqlite3
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -188,6 +189,7 @@ def rank_jobs(
     max_distance_miles: float = 50,
     batch_size: int = 5,
     api_key: str | None = None,
+    progress_callback: Callable[[int, int], None] | None = None,
 ) -> str:
     if batch_size <= 0:
         raise ValueError("batch_size must be greater than zero.")
@@ -220,13 +222,16 @@ def rank_jobs(
         limiter = get_shared_gemini_limiter()
         ranking_run_id = str(uuid.uuid4())
         created_at = datetime.now(timezone.utc).isoformat()
-        for start in range(0, len(jobs), batch_size):
+        total_batches = (len(jobs) + batch_size - 1) // batch_size
+        for batch_number, start in enumerate(range(0, len(jobs), batch_size), start=1):
             batch = jobs[start : start + batch_size]
             for item, job in zip(_rank_batch(agent, limiter, cv, batch), batch):
                 conn.execute(
                     "INSERT INTO job_rankings (ranking_run_id, cv_id, scrape_id, job_key, vacancy_url, score, skills_score, education_score, experience_score, seniority_score, licenses_score, location_score, role_match_score, salary_score, benefits_score, distance_miles, location_eligible, recommendation, recommendation_explanation, matches, missing_requirements, conflicts, component_explanations, model, criteria_version, weights, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (ranking_run_id, filters.cv_id, filters.scrape_id, item.job_key, job.get("url"), item.score, item.skills_score, item.education_score, item.experience_score, item.seniority_score, item.licenses_score, item.location_score, item.role_match_score, item.salary_score, item.benefits_score, job["distance_miles"], job["location_eligible"], item.recommendation, item.recommendation_explanation, json.dumps(item.matches), json.dumps(item.missing_requirements), json.dumps(item.conflicts), json.dumps(item.component_explanations), "gemini-flash-lite-latest", "v1", json.dumps(DEFAULT_WEIGHTS), created_at),
                 )
+            if progress_callback is not None:
+                progress_callback(batch_number, total_batches)
         conn.commit()
         return ranking_run_id
     finally:

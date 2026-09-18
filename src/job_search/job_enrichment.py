@@ -7,6 +7,7 @@ import json
 import os
 import sqlite3
 from collections.abc import Sequence
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -246,6 +247,7 @@ def enrich_jobs_in_batches(
     *,
     batch_size: int = BATCH_SIZE,
     api_key: str | None = None,
+    progress_callback: Callable[[int, int], None] | None = None,
 ) -> list[Job]:
     """Process jobs in batches of a configurable size and return enriched Job objects."""
     if batch_size <= 0:
@@ -253,10 +255,13 @@ def enrich_jobs_in_batches(
 
     enricher = JobEnricher(api_key=api_key)
     enriched_jobs: list[Job] = []
-    for start in range(0, len(jobs), batch_size):
+    total_jobs = len(jobs)
+    for start in range(0, total_jobs, batch_size):
         batch = list(jobs[start : start + batch_size])
         for raw_job in batch:
             enriched_jobs.append(enricher.enrich_job(raw_job))
+            if progress_callback is not None:
+                progress_callback(len(enriched_jobs), total_jobs)
     return enriched_jobs
 
 

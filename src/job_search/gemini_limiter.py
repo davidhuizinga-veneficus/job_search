@@ -6,6 +6,7 @@ import os
 import threading
 import time
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 
@@ -18,6 +19,7 @@ class GeminiRateLimiter:
     window_seconds: int = 60
     _timestamps: deque[float] = field(default_factory=deque)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+    wait_callback: Callable[[float], None] | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         env_rpm = os.environ.get("GEMINI_REQUESTS_PER_MINUTE")
@@ -33,8 +35,9 @@ class GeminiRateLimiter:
             except ValueError:
                 pass
 
-    def acquire(self) -> None:
+    def acquire(self, wait_callback: Callable[[float], None] | None = None) -> None:
         """Wait until the API rate window has capacity."""
+        wait_callback = wait_callback or self.wait_callback
         with self._lock:
             if not isinstance(self._timestamps, deque):
                 self._timestamps = deque(self._timestamps)
@@ -54,7 +57,10 @@ class GeminiRateLimiter:
                 if wait_for <= 0:
                     self._timestamps.popleft()
                     continue
-                time.sleep(wait_for)
+                if wait_callback is None:
+                    time.sleep(wait_for)
+                else:
+                    wait_callback(wait_for)
 
     def estimate_tokens(self, text: str) -> int:
         """Cheap conservative token estimate for budgeting long prompts."""
