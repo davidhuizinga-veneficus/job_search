@@ -217,7 +217,7 @@ def rank_jobs(
         agent = Agent(
             GoogleModel("gemini-flash-lite-latest", provider=provider),
             output_type=RankingBatch,
-            instructions="Rank each job against the complete structured CV. Return exactly one result per job_key. Treat the CV as complete: missing required evidence is a failure. Use the provided location score and eligibility facts; do not estimate distance. Explain every component concisely with readable keyword-style evidence. Scores must be 0-100.",
+            instructions="Rank each job against the complete structured CV. Return exactly one result per job_key. Treat the CV as complete: missing required evidence is a failure. Use the provided location score and eligibility facts; do not estimate distance. Explain every component concisely with readable keyword-style evidence, the score itself is not a valid explanation of the score, use sentences which explain why each score was given. Scores must be 0-100. Ensure the candidate's prior experience is actually relevant to the job.",
         )
         limiter = get_shared_gemini_limiter()
         ranking_run_id = str(uuid.uuid4())

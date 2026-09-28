@@ -40,7 +40,27 @@ def _query_rankings(db_path: Path, ranking_run_id: str) -> list[dict[str, Any]]:
         return [
             dict(row)
             for row in conn.execute(
-                "SELECT * FROM job_rankings WHERE ranking_run_id = ? ORDER BY score DESC",
+                """
+                SELECT
+                    rankings.*,
+                    jobs.title,
+                    jobs.company,
+                    jobs.location,
+                    jobs.salary_min,
+                    jobs.salary_max,
+                    jobs.salary_currency,
+                    jobs.salary_interval,
+                    jobs.is_remote,
+                    jobs.description,
+                    jobs.search_term
+                FROM job_rankings AS rankings
+                LEFT JOIN enriched_jobs AS jobs
+                    ON jobs.cv_id = rankings.cv_id
+                    AND jobs.scrape_id = rankings.scrape_id
+                    AND jobs.job_key = rankings.job_key
+                WHERE rankings.ranking_run_id = ?
+                ORDER BY rankings.score DESC
+                """,
                 (ranking_run_id,),
             )
         ]
@@ -101,17 +121,28 @@ def _render_card(row: dict[str, Any], rank: int) -> None:
     with st.expander("View details", expanded=False):
         st.markdown(f"**{recommendation}**")
         st.write(row.get("recommendation_explanation") or "No explanation available.")
-        component_names = (
-            "skills", "education", "experience", "seniority", "licenses",
-            "location", "role_match", "salary", "benefits",
-        )
         explanations = _json_object(row.get("component_explanations"))
-        for component in component_names:
+        component_names = (
+            ("skills", "Skills"),
+            ("education", "Education"),
+            ("experience", "Experience"),
+            ("seniority", "Seniority"),
+            ("licenses", "Licenses and certifications"),
+            ("location", "Location"),
+            ("role_match", "Role match"),
+            ("salary", "Salary"),
+            ("benefits", "Benefits"),
+        )
+        for component, label in component_names:
             score = row.get(f"{component}_score")
-            if score is not None:
-                st.markdown(f"**{component.replace('_', ' ').title()}**: {score:g} / 100")
-                if explanations.get(component):
-                    st.caption(explanations[component])
+            if score is None:
+                continue
+            st.markdown(f"**{label}: {float(score):g} / 100**")
+            explanation = explanations.get(component) or explanations.get(f"{component}_score")
+            if explanation:
+                st.caption(str(explanation))
+            else:
+                st.caption("No explanation available.")
         if row.get("vacancy_url"):
             st.link_button("Apply →", row["vacancy_url"], use_container_width=False)
         else:

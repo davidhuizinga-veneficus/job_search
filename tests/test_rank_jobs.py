@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from job_search.job_enrichment import store_jobs_in_sqlite
 from job_search.rank_jobs import RankingBatch, RankingFilters, RankingResult, rank_jobs
+from job_search.app import _json_object, _query_rankings
 
 
 class FakeRankingAgent:
@@ -81,6 +82,9 @@ class TestRankJobs(unittest.TestCase):
             "title": raw_job["title"],
             "company": raw_job["company"],
             "location": raw_job["location"],
+            "salary_min": 5000,
+            "salary_currency": "EUR",
+            "salary_interval": "month",
             "description": raw_job["description"],
             "search_term": raw_job["search_term"],
         }
@@ -111,6 +115,19 @@ class TestRankJobs(unittest.TestCase):
             self.assertEqual(len(rows), 1)
             self.assertEqual(rows[0][:5], ("cv-1", "scrape-1", raw_job["job_url"], 80.0, "strong_match"))
             self.assertIn("Python", rows[0][5])
+
+            displayed = _query_rankings(db_path, run_id)
+            self.assertEqual(displayed[0]["title"], "Backend Developer")
+            self.assertEqual(displayed[0]["company"], "Acme")
+            self.assertEqual(displayed[0]["location"], "Amsterdam")
+            self.assertEqual(displayed[0]["salary_min"], 5000.0)
+            self.assertEqual(displayed[0]["salary_currency"], "EUR")
+            self.assertEqual(
+                displayed[0]["component_explanations"],
+                '{"skills": "Python is explicitly listed."}',
+            )
+            explanations = _json_object(displayed[0]["component_explanations"])
+            self.assertEqual(explanations.get("skills"), "Python is explicitly listed.")
         finally:
             pass
 
