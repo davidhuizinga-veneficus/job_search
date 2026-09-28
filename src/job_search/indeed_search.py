@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from jobspy import scrape_jobs
+from jobspy.model import Country
 
 from job_search.search_terms import SearchTerms
 
@@ -33,6 +34,10 @@ def _normalize_indeed_country(country: str | None) -> str:
         "n/a",
         "na",
     }:
+        return "netherlands"
+    try:
+        Country.from_string(value)
+    except ValueError:
         return "netherlands"
     return value
 

@@ -34,7 +34,7 @@ class FakeRankingAgent:
                             role_match_score=80,
                             salary_score=60,
                             benefits_score=50,
-                            recommendation="strong_match",
+                            recommendation="Strong match",
                             recommendation_explanation="Strong skills and experience match.",
                             matches=["Python", "Backend development"],
                             missing_requirements=["AWS"],
@@ -113,7 +113,7 @@ class TestRankJobs(unittest.TestCase):
 
             self.assertTrue(run_id)
             self.assertEqual(len(rows), 1)
-            self.assertEqual(rows[0][:5], ("cv-1", "scrape-1", raw_job["job_url"], 80.0, "strong_match"))
+            self.assertEqual(rows[0][:5], ("cv-1", "scrape-1", raw_job["job_url"], 80.0, "Strong match"))
             self.assertIn("Python", rows[0][5])
 
             displayed = _query_rankings(db_path, run_id)

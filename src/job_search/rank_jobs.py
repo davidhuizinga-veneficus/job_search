@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from geopy.geocoders import Nominatim
 from pydantic import BaseModel, Field
@@ -47,7 +47,7 @@ class RankingResult(BaseModel):
     role_match_score: float = Field(ge=0, le=100)
     salary_score: float = Field(ge=0, le=100)
     benefits_score: float = Field(ge=0, le=100)
-    recommendation: str
+    recommendation: Literal["Strong match", "Possible match", "Weak match"]
     recommendation_explanation: str
     matches: list[str] = Field(default_factory=list)
     missing_requirements: list[str] = Field(default_factory=list)
@@ -217,7 +217,30 @@ def rank_jobs(
         agent = Agent(
             GoogleModel("gemini-flash-lite-latest", provider=provider),
             output_type=RankingBatch,
-            instructions="Rank each job against the complete structured CV. Return exactly one result per job_key. Treat the CV as complete: missing required evidence is a failure. Use the provided location score and eligibility facts; do not estimate distance. Explain every component concisely with readable keyword-style evidence, the score itself is not a valid explanation of the score, use sentences which explain why each score was given. Scores must be 0-100. Ensure the candidate's prior experience is actually relevant to the job.",
+            instructions=(
+                "Rank each job against the complete structured CV. Return exactly one result per job_key. "
+                "Treat the CV as complete: missing required evidence is a failure. "
+                "Use the provided location score and eligibility facts; do not estimate distance. "
+                "Set recommendation to 'Strong match' when the candidate meets the key requirements, "
+                "'Possible match' when some key requirements are missing but the role is still worth reviewing, "
+                "and 'Weak match' otherwise. "
+                "Scores must be 0-100. Ensure the candidate's prior experience is actually relevant to the job. "
+                "For experience and seniority, count only years spent in roles that are the same as or closely similar "
+                "to the job (same function and core tasks). "
+                "Years in roles with a different function do not count, even if they are in the same industry or field. "
+                "Compare the relevant years against the seniority and years of experience the job asks for, "
+                "and in the explanation name which roles were counted, their total years, and which roles were excluded. "
+                "component_explanations must contain one entry per component, keyed by: skills, education, experience, "
+                "seniority, licenses, location, role_match, salary, benefits. "
+                "Each value is one or two short sentences that name the concrete job requirement and the matching or "
+                "missing CV evidence that led to the score. "
+                "Never put the component's score, a percentage or a rating in an explanation (factual numbers from the "
+                "CV or job, such as years of experience, are fine), and never restate the score in words "
+                "(e.g. 'high match', 'scored well', 'good fit' on their own are not explanations). "
+                "Bad: '85' or 'Score: 85/100' or 'Strong skills match.' "
+                "Good: 'Job requires Python and SQL; CV shows 3 years of Python and SQL in data pipeline work, but no Spark.' "
+                "If the job gives no information for a component, say what is missing from the vacancy instead."
+            ),
         )
         limiter = get_shared_gemini_limiter()
         ranking_run_id = str(uuid.uuid4())

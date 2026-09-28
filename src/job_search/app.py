@@ -6,6 +6,7 @@ import math
 import time
 import uuid
 import hashlib
+import html
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any
@@ -82,11 +83,11 @@ def _wait_callback(waiting: Any) -> Any:
 
 def _recommendation_color(recommendation: str) -> str:
     text = recommendation.lower()
-    if "strong" in text:
+    if "strong" in text or text == "yes":
         return "#198754"
-    if any(word in text for word in ("review", "possible", "moderate")):
+    if any(word in text for word in ("review", "possible", "moderate", "maybe")):
         return "#d98c00"
-    if any(word in text for word in ("weak", "poor", "not")):
+    if any(word in text for word in ("weak", "poor", "not")) or text == "no":
         return "#c0392b"
     return "#6c757d"
 
@@ -110,16 +111,20 @@ def _render_card(row: dict[str, Any], rank: int) -> None:
     color = _recommendation_color(recommendation)
     distance = row.get("distance_miles")
     distance_text = f"{distance:g} miles" if distance is not None else "Distance unavailable"
+    if row.get("vacancy_url"):
+        apply_link = f'<a class="apply" href="{html.escape(row["vacancy_url"], quote=True)}" target="_blank" rel="noopener">Apply →</a>'
+    else:
+        apply_link = '<span class="muted">Vacancy link unavailable</span>'
     st.markdown(
         f"""<div class="job-card">
         <div class="job-card-heading"><span class="rank">#{rank}</span><span class="marker" style="background:{color}"></span><strong>{row.get('title') or 'Untitled role'}</strong><span class="score">{row.get('score', 0):g}%</span></div>
         <div class="muted">{row.get('company') or 'Company unavailable'} · {row.get('location') or 'Location unavailable'} · {distance_text}</div>
-        <div class="muted">{_format_salary(row)}</div>
+        <div class="job-card-footer"><span class="muted">{_format_salary(row)}</span>{apply_link}</div>
         </div>""",
         unsafe_allow_html=True,
     )
     with st.expander("View details", expanded=False):
-        st.markdown(f"**{recommendation}**")
+        st.markdown(f"**Recommendation: {recommendation}**")
         st.write(row.get("recommendation_explanation") or "No explanation available.")
         explanations = _json_object(row.get("component_explanations"))
         component_names = (
@@ -143,10 +148,6 @@ def _render_card(row: dict[str, Any], rank: int) -> None:
                 st.caption(str(explanation))
             else:
                 st.caption("No explanation available.")
-        if row.get("vacancy_url"):
-            st.link_button("Apply →", row["vacancy_url"], use_container_width=False)
-        else:
-            st.button("Vacancy link unavailable", disabled=True, key=f"missing-{row['job_key']}")
 
 
 def _json_object(value: Any) -> dict[str, str]:
@@ -241,6 +242,9 @@ def main() -> None:
     .score { margin-left: auto; font-weight: 700; color: #17212b; }
     .marker { width: .75rem; height: .75rem; border-radius: 50%; display: inline-block; }
     .muted { color: #53616b; margin-top: .35rem; }
+    .job-card-footer { display: flex; align-items: center; justify-content: space-between; }
+    .job-card-footer .apply { margin-top: .35rem; padding: .3rem .8rem; border: 1px solid #5b7c99; border-radius: 6px; color: #5b7c99; font-weight: 600; text-decoration: none; }
+    .job-card-footer .apply:hover { background: #5b7c99; color: #fff; }
     </style>""", unsafe_allow_html=True)
     st.title("🤖 JobAgent")
 
@@ -259,7 +263,8 @@ def main() -> None:
     with left:
         st.markdown(f"**📄 {uploaded_file.name}**")
     with right:
-        st.markdown("**📍 Location will be shown after running**")
+        location_slot = st.empty()
+        location_slot.markdown("**📍 Location will be shown after running**")
     scrape_radius = st.number_input("Scrape radius (miles)", min_value=1, value=50)
     results_wanted = st.number_input("Results per search term", min_value=1, value=20)
     run = st.button("Run", type="primary", disabled=st.session_state.get("running", False), use_container_width=True)
@@ -286,16 +291,13 @@ def main() -> None:
     if not results:
         return
 
-    st.markdown(f"**📄 {st.session_state['profile_name']}** · **📍 {st.session_state['profile_location'] or 'Unknown'}**")
+    location_slot.markdown(f"**📍 {st.session_state['profile_location'] or 'Unknown'}**")
     scores = [float(row["score"]) for row in results]
     bins = list(range(0, 101, 10))
     counts = [sum(1 for score in scores if lower <= score < lower + 10) for lower in bins[:-1]]
     histogram = pd.DataFrame({"Score range": [f"{lower}-{lower + 9}" for lower in bins[:-1]], "Jobs": counts})
     st.bar_chart(histogram, x="Score range", y="Jobs", color="#5b7c99")
-    st.caption("Overall scrape summary will appear here.")
-    minimum_score = st.slider("Minimum match", 0, 100, 75)
-    filtered = [row for row in results if float(row["score"]) >= minimum_score]
-    page_count = max(1, math.ceil(len(filtered) / RESULTS_PER_PAGE))
+    page_count = max(1, math.ceil(len(results) / RESULTS_PER_PAGE))
     page = min(st.session_state.get("page", 0), page_count - 1)
     previous, page_label, next_page = st.columns([1, 2, 1])
     with previous:
@@ -309,7 +311,7 @@ def main() -> None:
             st.session_state.page = page + 1
             st.rerun()
     start = page * RESULTS_PER_PAGE
-    for rank, row in enumerate(filtered[start : start + RESULTS_PER_PAGE], start=start + 1):
+    for rank, row in enumerate(results[start : start + RESULTS_PER_PAGE], start=start + 1):
         _render_card(row, rank)
 
 
