@@ -35,6 +35,9 @@ mlflow.db
 # ignore the optuna database
 optuna_xgb.db
 
+# local agent skills
+.github/
+
 ########### Default .gitignore from github below
 # Byte-compiled / optimized / DLL files
 __pycache__/
