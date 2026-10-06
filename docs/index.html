@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>JobAgent</title>
+  <style>
+    :root { --bg: #f7f7f5; --fg: #1d1d1b; --muted: #5f5f5a; --accent: #2f6fdb; --card: #ffffff; --line: #e3e3de; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #161615; --fg: #ececea; --muted: #a3a39d; --accent: #7aa7f5; --card: #1f1f1d; --line: #33332f; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--fg); font: 17px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    main { max-width: 720px; margin: 0 auto; padding: 64px 16px; }
+    h1 { font-size: 2.6rem; margin: 0 0 8px; letter-spacing: -0.02em; }
+    .lead { color: var(--muted); font-size: 1.2rem; margin: 0 0 40px; }
+    ol { list-style: none; padding: 0; margin: 0 0 40px; counter-reset: step; }
+    li { counter-increment: step; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px 14px 56px; margin-bottom: 10px; position: relative; }
+    li::before { content: counter(step); position: absolute; left: 16px; top: 14px; width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: var(--bg); font-weight: 600; font-size: 0.9rem; display: grid; place-items: center; }
+    pre { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; overflow-x: auto; }
+    footer { color: var(--muted); font-size: 0.9rem; margin-top: 48px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>JobAgent</h1>
+    <p class="lead">Upload your CV and get Indeed vacancies ranked by how well they fit you.</p>
+
+    <ol>
+      <li>Reads your PDF CV and turns it into structured data.</li>
+      <li>Comes up with search terms that fit your profile.</li>
+      <li>Searches Indeed for jobs near you.</li>
+      <li>Pulls the key facts out of each vacancy: salary, requirements, remote work.</li>
+      <li>Scores every job against your CV and ranks them from best to worst match.</li>
+    </ol>
+
+    <h2>Run it locally</h2>
+    <pre><code>uv sync
+uv run streamlit run src/job_search/app.py</code></pre>
+
+    <footer>This page is a static site served by GitHub Pages from the <code>docs/</code> folder.</footer>
+  </main>
+</body>
+</html>
